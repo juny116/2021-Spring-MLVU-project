@@ -1,0 +1,9 @@
+axial_positional_embedding
+einops
+omegaconf
+taming-transformers
+youtokentome
+tokenizers
+transformers
+ftfy
+wandb

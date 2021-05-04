@@ -1,3 +1,14 @@
+# dall-e generation outputs
+outputs/
+wandb/
+samples/
+scripts/
+*.pt
+*.pth
+create_sample.sh
+trained_models/
+taming/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
