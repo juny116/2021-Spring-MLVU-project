@@ -4,7 +4,7 @@ from pathlib import Path
 import torch
 import wandb  # Quit early if user doesn't have wandb installed.
 from torch.nn.utils import clip_grad_norm_
-from torch.optim import AdamW
+from torch.optim import AdamW, Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
@@ -68,8 +68,8 @@ DALLE_PATH = args.dalle_path
 RESUME = exists(DALLE_PATH)
 
 EPOCHS = 20
-BATCH_SIZE = 4
-LEARNING_RATE = 0.00045
+BATCH_SIZE = 6
+LEARNING_RATE = 0.0018
 GRAD_CLIP_NORM = 0.5
 
 MODEL_DIM = 256
@@ -226,7 +226,7 @@ if RESUME:
 
 # optimizer
 
-opt = AdamW(dalle.parameters(), lr=LEARNING_RATE, betas=(0.9,0.96), weight_decay=4.5e-2, amsgrad=True)
+opt = Adam(dalle.parameters(), lr=LEARNING_RATE, betas=(0.9,0.96), weight_decay=4.5e-2, amsgrad=True)
 
 if LR_DECAY:
     scheduler = ReduceLROnPlateau(
