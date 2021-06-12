@@ -21,6 +21,7 @@ import torch.nn.functional as F
 from einops import rearrange
 
 from dalle_pytorch import distributed_utils
+from dall_e import load_model
 
 # constants
 
@@ -32,6 +33,9 @@ OPENAI_VAE_DECODER_PATH = 'https://cdn.openai.com/dall-e/decoder.pkl'
 VQGAN_VAE_PATH = 'https://heibox.uni-heidelberg.de/f/140747ba53464f49b476/?dl=1'
 VQGAN_VAE_CONFIG_PATH = 'https://heibox.uni-heidelberg.de/f/6ecf2af6c658432c8298/?dl=1'
 
+VQGAN_16384_PATH = 'https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fckpts%2Flast.ckpt&dl=1'
+VQGAN_16384_CONFIG_PATH = 'https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fconfigs%2Fmodel.yaml&dl=1'
+
 # helpers methods
 
 def exists(val):
@@ -40,9 +44,9 @@ def exists(val):
 def default(val, d):
     return val if exists(val) else d
 
-def load_model(path):
-    with open(path, 'rb') as f:
-        return torch.load(f, map_location = torch.device('cpu'))
+# def load_model(path):
+#     with open(path, 'rb') as f:
+#         return torch.load(f, map_location = torch.device('cpu'))
 
 def map_pixels(x, eps = 0.1):
     return (1 - 2 * eps) * x + eps
@@ -99,8 +103,9 @@ class OpenAIDiscreteVAE(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.enc = load_model(download(OPENAI_VAE_ENCODER_PATH))
-        self.dec = load_model(download(OPENAI_VAE_DECODER_PATH))
+        dev = torch.device('cpu')
+        self.enc = load_model(OPENAI_VAE_ENCODER_PATH, dev)
+        self.dec = load_model(OPENAI_VAE_DECODER_PATH, dev)
 
         self.num_layers = 3
         self.image_size = 256
@@ -150,6 +155,68 @@ class VQGanVAE1024(nn.Module):
         self.num_layers = 4
         self.image_size = 256
         self.num_tokens = 1024
+
+        self._register_external_parameters()
+
+    def _register_external_parameters(self):
+        """Register external parameters for DeepSpeed partitioning."""
+        if (
+                not distributed_utils.is_distributed
+                or not distributed_utils.using_backend(
+                    distributed_utils.DeepSpeedBackend)
+        ):
+            return
+
+        deepspeed = distributed_utils.backend.backend_module
+        deepspeed.zero.register_external_parameters(
+            self, self.model.quantize.embedding.weight)
+
+    @torch.no_grad()
+    def get_codebook_indices(self, img):
+        b = img.shape[0]
+        img = (2 * img) - 1
+        _, _, [_, _, indices] = self.model.encode(img)
+        return rearrange(indices, '(b n) () -> b n', b = b)
+
+    def decode(self, img_seq):
+        b, n = img_seq.shape
+        one_hot_indices = F.one_hot(img_seq, num_classes = self.num_tokens).float()
+        z = (one_hot_indices @ self.model.quantize.embedding.weight)
+
+        z = rearrange(z, 'b (h w) c -> b c h w', h = int(sqrt(n)))
+        img = self.model.decode(z)
+
+        img = (img.clamp(-1., 1.) + 1) * 0.5
+        return img
+
+    def forward(self, img):
+        raise NotImplemented
+
+
+# VQGAN from Taming Transformers paper
+# https://arxiv.org/abs/2012.09841
+
+class VQGanVAE16384(nn.Module):
+    def __init__(self):
+        super().__init__()
+        print('VQGAN 16384')
+        model_filename = 'vqgan.16384.model.ckpt'
+        config_filename = 'vqgan.16384.config.yml'
+
+        download(VQGAN_16384_CONFIG_PATH, config_filename)
+        download(VQGAN_16384_PATH, model_filename)
+
+        config = OmegaConf.load(str(Path(CACHE_PATH) / config_filename))
+        model = VQModel(**config.model.params)
+
+        state = torch.load(str(Path(CACHE_PATH) / model_filename), map_location = 'cpu')['state_dict']
+        model.load_state_dict(state, strict = False)
+
+        self.model = model
+
+        self.num_layers = 4
+        self.image_size = 256
+        self.num_tokens = 16384
 
         self._register_external_parameters()
 

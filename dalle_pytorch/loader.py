@@ -74,7 +74,7 @@ class TextImageDataset(Dataset):
         text_file = self.text_files[key]
         image_file = self.image_files[key]
 
-        descriptions = text_file.read_text().split('\n')
+        descriptions = text_file.read_text(encoding='latin-1').split('\n')
         descriptions = list(filter(lambda t: len(t) > 0, descriptions))
         try:
             description = choice(descriptions)

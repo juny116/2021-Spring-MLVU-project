@@ -16,7 +16,9 @@ from torchvision.utils import make_grid, save_image
 # dalle related classes and utils
 
 from dalle_pytorch import DiscreteVAE, OpenAIDiscreteVAE, VQGanVAE1024, DALLE
-from dalle_pytorch.simple_tokenizer import tokenize, tokenizer, VOCAB_SIZE
+from dalle_pytorch.tokenizer import tokenizer
+
+import clip
 
 # argument parsing
 
@@ -71,7 +73,7 @@ dalle.load_state_dict(weights)
 
 image_size = vae.image_size
 
-text = tokenize([args.text], dalle.text_seq_len).cuda()
+text = tokenizer.tokenize([args.text], dalle.text_seq_len).cuda()
 
 text = repeat(text, '() n -> b n', b = args.num_images)
 
@@ -84,6 +86,21 @@ for text_chunk in tqdm(text.split(args.batch_size), desc = 'generating images'):
 outputs = torch.cat(outputs)
 
 # save all images
+# print(outputs.shape)
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+# model, preprocess = clip.load("ViT-B/32", device=device)
+
+# clip_text = clip.tokenize([args.text]).to(device)
+
+# print(clip_text.shape)
+# with torch.no_grad():
+#     # image_features = model.encode_image(outputs)
+#     # text_features = model.encode_text(text)
+#     logits_per_image, logits_per_text = model(outputs, clip_text)
+#     probs = logits_per_image.softmax(dim=-1).cpu().numpy()
+#     probs = logits_per_text.softmax(dim=-1).cpu().numpy()
+
+# print("Label probs:", probs) 
 
 outputs_dir = Path(args.outputs_dir) / args.text.replace(' ', '_')
 outputs_dir.mkdir(parents = True, exist_ok = True)

@@ -8,11 +8,12 @@ from torch.optim import AdamW, Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from dalle_pytorch import OpenAIDiscreteVAE, VQGanVAE1024, DiscreteVAE, DALLE
+from dalle_pytorch import OpenAIDiscreteVAE, VQGanVAE1024, DiscreteVAE, DALLE, VQGanVAE16384
 from dalle_pytorch import distributed_utils
 from dalle_pytorch.loader import TextImageDataset
 from dalle_pytorch.tokenizer import tokenizer, HugTokenizer, ChineseTokenizer, YttmTokenizer
-
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # argument parsing
 
 parser = argparse.ArgumentParser()
@@ -38,6 +39,8 @@ parser.add_argument('--chinese', dest='chinese', action='store_true')
 
 parser.add_argument('--taming', dest='taming', action='store_true')
 
+parser.add_argument('--taming16', dest='taming16', action='store_true')
+
 parser.add_argument('--hug', dest='hug', action='store_true')
 
 parser.add_argument('--bpe_path', type=str,
@@ -46,7 +49,7 @@ parser.add_argument('--bpe_path', type=str,
 parser.add_argument('--fp16', action='store_true',
                     help='(experimental) - Enable DeepSpeed 16 bit precision. Reduces VRAM.')
 
-parser.add_argument('--wandb_name', default='dalle_train_transformer',
+parser.add_argument('--wandb_name', default='dalle_train_transformer_final',
                     help='Name W&B will use when saving results.\ne.g. `--wandb_name "coco2017-full-sparse"`')
 parser = distributed_utils.wrap_arg_parser(parser)
 args = parser.parse_args()
@@ -67,9 +70,9 @@ VAE_PATH = args.vae_path
 DALLE_PATH = args.dalle_path
 RESUME = exists(DALLE_PATH)
 
-EPOCHS = 20
-BATCH_SIZE = 6
-LEARNING_RATE = 0.0018
+EPOCHS = 10
+BATCH_SIZE = 8
+LEARNING_RATE = 0.00045
 GRAD_CLIP_NORM = 0.5
 
 MODEL_DIM = 256
@@ -79,7 +82,7 @@ HEADS = 8
 DIM_HEAD = 64
 REVERSIBLE = 0
 LOSS_IMG_WEIGHT = 7
-LR_DECAY = False
+LR_DECAY = True
 
 # initialize distributed backend
 
@@ -106,11 +109,15 @@ if RESUME:
 
     dalle_params, vae_params, weights = loaded_obj['hparams'], loaded_obj['vae_params'], loaded_obj['weights']
 
-    if vae_params is not None:
-        vae = DiscreteVAE(**vae_params)
-    else:
-        vae_klass = OpenAIDiscreteVAE if not args.taming else VQGanVAE1024
+    if args.taming16:
+        vae_klass = VQGanVAE16384
         vae = vae_klass()
+    else:
+        if vae_params is not None:
+            vae = DiscreteVAE(**vae_params)
+        else:
+            vae_klass = OpenAIDiscreteVAE if not args.taming else VQGanVAE1024
+            vae = vae_klass()
 
     dalle_params = dict(
         **dalle_params
@@ -131,8 +138,10 @@ else:
         if distr_backend.is_root_worker():
             print('using pretrained VAE for encoding images to tokens')
         vae_params = None
-
-        vae_klass = OpenAIDiscreteVAE if not args.taming else VQGanVAE1024
+        if args.taming16:
+            vae_klass = VQGanVAE16384
+        else:
+            vae_klass = OpenAIDiscreteVAE if not args.taming else VQGanVAE1024
         vae = vae_klass()
 
     IMAGE_SIZE = vae.image_size
@@ -145,7 +154,8 @@ else:
         heads=HEADS,
         dim_head=DIM_HEAD,
         reversible=REVERSIBLE,
-        loss_img_weight=LOSS_IMG_WEIGHT
+        loss_img_weight=LOSS_IMG_WEIGHT,
+        attn_types=('full')
     )
 
 # configure OpenAI VAE for float16s
@@ -226,7 +236,7 @@ if RESUME:
 
 # optimizer
 
-opt = Adam(dalle.parameters(), lr=LEARNING_RATE, betas=(0.9,0.96), weight_decay=4.5e-2, amsgrad=True)
+opt = AdamW(dalle.parameters(), lr=LEARNING_RATE, betas=(0.9,0.96), weight_decay=4.5e-2, amsgrad=True)
 
 if LR_DECAY:
     scheduler = ReduceLROnPlateau(
@@ -321,8 +331,8 @@ for epoch in range(EPOCHS):
                     # CUDA index errors when we don't guard this
                     image = dalle.generate_images(text[:1], filter_thres=0.9)  # topk sampling at 0.9
 
-                save_model(f'./dalle.pt')
-                wandb.save(f'./dalle.pt')
+                save_model(f'./dalle_taming16.pt')
+                wandb.save(f'./dalle_taming16.pt')
 
                 log = {
                     **log,
@@ -341,7 +351,7 @@ for epoch in range(EPOCHS):
         # save trained model to wandb as an artifact every epoch's end
 
         model_artifact = wandb.Artifact('trained-dalle', type='model', metadata=dict(model_config))
-        model_artifact.add_file('dalle.pt')
+        model_artifact.add_file('./dalle_taming16.pt')
         run.log_artifact(model_artifact)
 
 if distr_backend.is_root_worker():

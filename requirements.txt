@@ -7,3 +7,5 @@ tokenizers
 transformers
 ftfy
 wandb
+clip-by-openai 
+dall_e
