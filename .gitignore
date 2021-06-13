@@ -1,5 +1,6 @@
 # dall-e generation outputs
 outputs/
+outputs_vae/
 wandb/
 samples/
 scripts/

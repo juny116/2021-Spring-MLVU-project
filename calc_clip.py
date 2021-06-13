@@ -40,4 +40,5 @@ with torch.no_grad():
     probs = logits_per_text.softmax(dim=-1).cpu().numpy()
 
 # print("Label probs:", probs)
+print(torch.mean(logits_per_text))
 print(torch.topk(logits_per_text, 10))

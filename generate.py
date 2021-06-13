@@ -1,3 +1,6 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+
 import argparse
 from pathlib import Path
 from tqdm import tqdm
@@ -15,7 +18,7 @@ from torchvision.utils import make_grid, save_image
 
 # dalle related classes and utils
 
-from dalle_pytorch import DiscreteVAE, OpenAIDiscreteVAE, VQGanVAE1024, DALLE
+from dalle_pytorch import DiscreteVAE, OpenAIDiscreteVAE, VQGanVAE1024, DALLE, VQGanVAE16384
 from dalle_pytorch.tokenizer import tokenizer
 
 import clip
@@ -39,10 +42,12 @@ parser.add_argument('--batch_size', type = int, default = 4, required = False,
 parser.add_argument('--top_k', type = float, default = 0.9, required = False,
                     help='top k filter threshold')
 
-parser.add_argument('--outputs_dir', type = str, default = './outputs', required = False,
+parser.add_argument('--outputs_dir', type = str, default = './outputs_vae', required = False,
                     help='output directory')
 
 parser.add_argument('--taming', dest='taming', action='store_true')
+
+parser.add_argument('--taming16', dest='taming16', action='store_true')
 
 args = parser.parse_args()
 
@@ -57,12 +62,15 @@ dalle_params, vae_params, weights = load_obj.pop('hparams'), load_obj.pop('vae_p
 
 dalle_params.pop('vae', None) # cleanup later
 
-if vae_params is not None:
-    vae = DiscreteVAE(**vae_params)
-elif not args.taming:
-    vae = OpenAIDiscreteVAE()
+if args.taming16:
+    vae = VQGanVAE16384()
 else:
-    vae = VQGanVAE1024()
+    if vae_params is not None:
+        vae = DiscreteVAE(**vae_params)
+    elif not args.taming:
+        vae = OpenAIDiscreteVAE()
+    else:
+        vae = VQGanVAE1024()
 
 
 dalle = DALLE(vae = vae, **dalle_params).cuda()
