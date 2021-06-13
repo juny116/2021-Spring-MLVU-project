@@ -103,7 +103,7 @@ class OpenAIDiscreteVAE(nn.Module):
     def __init__(self):
         super().__init__()
 
-        dev = torch.device('cpu')
+        dev = torch.device('cuda')
         self.enc = load_model(OPENAI_VAE_ENCODER_PATH, dev)
         self.dec = load_model(OPENAI_VAE_DECODER_PATH, dev)
 
@@ -147,8 +147,9 @@ class VQGanVAE1024(nn.Module):
         config = OmegaConf.load(str(Path(CACHE_PATH) / config_filename))
         model = VQModel(**config.model.params)
 
-        state = torch.load(str(Path(CACHE_PATH) / model_filename), map_location = 'cpu')['state_dict']
+        state = torch.load(str(Path(CACHE_PATH) / model_filename), map_location = 'cuda')['state_dict']
         model.load_state_dict(state, strict = False)
+        model.to('cuda')
 
         self.model = model
 
@@ -209,8 +210,9 @@ class VQGanVAE16384(nn.Module):
         config = OmegaConf.load(str(Path(CACHE_PATH) / config_filename))
         model = VQModel(**config.model.params)
 
-        state = torch.load(str(Path(CACHE_PATH) / model_filename), map_location = 'cpu')['state_dict']
+        state = torch.load(str(Path(CACHE_PATH) / model_filename), map_location = 'cuda')['state_dict']
         model.load_state_dict(state, strict = False)
+        model.to('cuda')
 
         self.model = model
 
@@ -231,6 +233,63 @@ class VQGanVAE16384(nn.Module):
 
         deepspeed = distributed_utils.backend.backend_module
         deepspeed.zero.register_external_parameters(
+            self, self.model.quantize.embedding.weight)
+
+    @torch.no_grad()
+    def get_codebook_indices(self, img):
+        b = img.shape[0]
+        img = (2 * img) - 1
+        _, _, [_, _, indices] = self.model.encode(img)
+        return rearrange(indices, '(b n) () -> b n', b = b)
+
+    def decode(self, img_seq):
+        b, n = img_seq.shape
+        one_hot_indices = F.one_hot(img_seq, num_classes = self.num_tokens).float()
+        z = (one_hot_indices @ self.model.quantize.embedding.weight)
+
+        z = rearrange(z, 'b (h w) c -> b c h w', h = int(sqrt(n)))
+        img = self.model.decode(z)
+
+        img = (img.clamp(-1., 1.) + 1) * 0.5
+        return img
+
+    def forward(self, img):
+        raise NotImplemented
+
+
+class VQGanVAECustom(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        model_filename = 'vqgan.custom.model.ckpt'
+        config_filename = 'vqgan.custom.config.yaml'
+
+        config = OmegaConf.load(str(Path(CACHE_PATH) / config_filename))
+        model = VQModel(**config.model.params)
+
+        state = torch.load(str(Path(CACHE_PATH) / model_filename), map_location = 'cuda')['state_dict']
+        model.load_state_dict(state, strict = False)
+        model.to('cuda')
+
+        self.model = model
+
+        self.num_layers = 4
+        self.image_size = 256
+        self.num_tokens = 1024
+
+        self._register_external_parameters()
+
+    def _register_external_parameters(self):
+        """Register external parameters for DeepSpeed partitioning."""
+        if (
+                not distributed_utils.is_distributed
+                or not distributed_utils.using_backend(
+                    distributed_utils.DeepSpeedBackend)
+        ):
+            return
+
+        deepspeed = distributed_utils.backend.backend_module
+        deepspeed.zero.register_external_parameter(
             self, self.model.quantize.embedding.weight)
 
     @torch.no_grad()

@@ -18,8 +18,8 @@ from torchvision.utils import make_grid, save_image
 
 # dalle related classes and utils
 
-from dalle_pytorch import OpenAIDiscreteVAE, VQGanVAE1024, DiscreteVAE, DALLE, VQGanVAE16384
-from dalle_pytorch.simple_tokenizer import tokenize, tokenizer, VOCAB_SIZE
+from dalle_pytorch import OpenAIDiscreteVAE, VQGanVAE1024, DiscreteVAE, DALLE, VQGanVAE16384, VQGanVAECustom
+# from dalle_pytorch.simple_tokenizer import tokenize, tokenizer, VOCAB_SIZE
 
 # argument parsing
 import io
@@ -32,6 +32,7 @@ import torchvision.transforms as T
 import torchvision.transforms.functional as TF
 
 from IPython.display import display, display_markdown
+from tqdm import tqdm
 
 target_image_size = 128
 
@@ -71,44 +72,52 @@ def exists(val):
     return val is not None
 
 IMAGE_SIZE = args.image_size
-if args.vae_class == 'VQGAN1024':
+VAE_CLASS = args.vae_class
+if VAE_CLASS == 'VQGAN1024':
     vae = VQGanVAE1024()
-elif args.vae_class == 'VQGAN16384':
+elif VAE_CLASS == 'VQGAN16384':
     vae = VQGanVAE16384()
-elif args.vae_class == 'DALLE':
+elif VAE_CLASS == 'VQGAN_CUSTOM':
+    vae = VQGanVAECustom()
+elif VAE_CLASS == 'DALLE':
     vae = OpenAIDiscreteVAE()
-else:
+elif VAE_CLASS == 'DALLE_TRAIN':
     VAE_PATH = args.vae_path
     vae_path = Path(VAE_PATH)
-    loaded_obj = torch.load(str(vae_path))
+    loaded_obj = torch.load(str(vae_path), map_location='cuda')
     vae_params, weights = loaded_obj['hparams'], loaded_obj['weights']
     vae = DiscreteVAE(**vae_params)
     vae.load_state_dict(weights)
+    vae.to('cuda')
 
-target = args.target
-img = PIL.Image.open(f'/home/juny116/Workspace/DALLE-pytorch/samples/{target}/org.jpg')
 
-composed = T.Compose([
-    T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
-    T.Resize(IMAGE_SIZE),
-    T.CenterCrop(IMAGE_SIZE),
-    T.ToTensor()
-])
+filenames = os.listdir(args.target)
 
-img = composed(img)
-org_img = T.ToPILImage(mode='RGB')(img)
-org_img.save(f'samples/{target}/{IMAGE_SIZE}.jpg')
-img = torch.unsqueeze(img, 0)
-lat = vae.get_codebook_indices(img)
-# or_lat = lat[:,:128]
+for filename in tqdm(filenames):
+    TARGET_IMG_PATH = args.target + '/' + filename
+    TARGET_SAVE_PATH  = args.target + '/output/'
+    filename = filename.split('.')[0]
+    
+    img = PIL.Image.open(TARGET_IMG_PATH)
 
-# lat = torch.randint(low=0, high=1024, size=(1,128))
-# lat = torch.cat([or_lat,lat],dim=1)
+    composed = T.Compose([
+        T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
+        T.Resize(IMAGE_SIZE),
+        T.CenterCrop(IMAGE_SIZE),
+        T.ToTensor()
+    ])
+    
+    img = composed(img)
+    org_img = T.ToPILImage(mode='RGB')(img)
+#     org_img.save(TARGET_SAVE_PATH+'/original/'+filename+'_original.jpg')
+    img = torch.unsqueeze(img, 0).to('cuda')
+    lat = vae.get_codebook_indices(img)
 
-imgs = vae.decode(lat)
-img = imgs[0]
-if args.vae_class == 'discrete':
-    img = make_grid(img.float(), normalize = True, range = (-1, 1))
-img = T.ToPILImage(mode='RGB')(img)
-img.save(f'samples/{target}/{args.vae_class}_{lat.size(1)}_{IMAGE_SIZE}.jpg')
+    imgs = vae.decode(lat)
+    img = imgs[0]
+    if VAE_CLASS == 'DALLE_TRAIN':
+        img = make_grid(img.float(), normalize = True, range = (-1, 1))
+    img = T.ToPILImage(mode='RGB')(img)
+    img.save(f'{TARGET_SAVE_PATH}/{VAE_CLASS}/{filename}_{lat.size(1)}_{IMAGE_SIZE}.jpg')
 
+    
