@@ -44,10 +44,6 @@ def exists(val):
 def default(val, d):
     return val if exists(val) else d
 
-# def load_model(path):
-#     with open(path, 'rb') as f:
-#         return torch.load(f, map_location = torch.device('cpu'))
-
 def map_pixels(x, eps = 0.1):
     return (1 - 2 * eps) * x + eps
 
@@ -103,7 +99,7 @@ class OpenAIDiscreteVAE(nn.Module):
     def __init__(self):
         super().__init__()
 
-        dev = torch.device('cuda')
+        dev = torch.device('cpu')
         self.enc = load_model(OPENAI_VAE_ENCODER_PATH, dev)
         self.dec = load_model(OPENAI_VAE_DECODER_PATH, dev)
 
@@ -147,9 +143,8 @@ class VQGanVAE1024(nn.Module):
         config = OmegaConf.load(str(Path(CACHE_PATH) / config_filename))
         model = VQModel(**config.model.params)
 
-        state = torch.load(str(Path(CACHE_PATH) / model_filename), map_location = 'cuda')['state_dict']
+        state = torch.load(str(Path(CACHE_PATH) / model_filename), map_location = 'cpu')['state_dict']
         model.load_state_dict(state, strict = False)
-        model.to('cuda')
 
         self.model = model
 
@@ -210,9 +205,8 @@ class VQGanVAE16384(nn.Module):
         config = OmegaConf.load(str(Path(CACHE_PATH) / config_filename))
         model = VQModel(**config.model.params)
 
-        state = torch.load(str(Path(CACHE_PATH) / model_filename), map_location = 'cuda')['state_dict']
+        state = torch.load(str(Path(CACHE_PATH) / model_filename), map_location = 'cpu')['state_dict']
         model.load_state_dict(state, strict = False)
-        model.to('cuda')
 
         self.model = model
 
@@ -267,9 +261,8 @@ class VQGanVAECustom(nn.Module):
         config = OmegaConf.load(str(Path(CACHE_PATH) / config_filename))
         model = VQModel(**config.model.params)
 
-        state = torch.load(str(Path(CACHE_PATH) / model_filename), map_location = 'cuda')['state_dict']
+        state = torch.load(str(Path(CACHE_PATH) / model_filename), map_location = 'cpu')['state_dict']
         model.load_state_dict(state, strict = False)
-        model.to('cuda')
 
         self.model = model
 
