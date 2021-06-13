@@ -70,8 +70,8 @@ VAE_PATH = args.vae_path
 DALLE_PATH = args.dalle_path
 RESUME = exists(DALLE_PATH)
 
-EPOCHS = 10
-BATCH_SIZE = 8
+EPOCHS = 3
+BATCH_SIZE = 4
 LEARNING_RATE = 0.00045
 GRAD_CLIP_NORM = 0.5
 
@@ -331,8 +331,8 @@ for epoch in range(EPOCHS):
                     # CUDA index errors when we don't guard this
                     image = dalle.generate_images(text[:1], filter_thres=0.9)  # topk sampling at 0.9
 
-                save_model(f'./dalle_taming16.pt')
-                wandb.save(f'./dalle_taming16.pt')
+                save_model(f'./dalle_open.pt')
+                wandb.save(f'./dalle_open.pt')
 
                 log = {
                     **log,
@@ -351,7 +351,7 @@ for epoch in range(EPOCHS):
         # save trained model to wandb as an artifact every epoch's end
 
         model_artifact = wandb.Artifact('trained-dalle', type='model', metadata=dict(model_config))
-        model_artifact.add_file('./dalle_taming16.pt')
+        model_artifact.add_file('./dalle_open.pt')
         run.log_artifact(model_artifact)
 
 if distr_backend.is_root_worker():

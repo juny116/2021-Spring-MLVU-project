@@ -86,21 +86,6 @@ for text_chunk in tqdm(text.split(args.batch_size), desc = 'generating images'):
 outputs = torch.cat(outputs)
 
 # save all images
-# print(outputs.shape)
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-# model, preprocess = clip.load("ViT-B/32", device=device)
-
-# clip_text = clip.tokenize([args.text]).to(device)
-
-# print(clip_text.shape)
-# with torch.no_grad():
-#     # image_features = model.encode_image(outputs)
-#     # text_features = model.encode_text(text)
-#     logits_per_image, logits_per_text = model(outputs, clip_text)
-#     probs = logits_per_image.softmax(dim=-1).cpu().numpy()
-#     probs = logits_per_text.softmax(dim=-1).cpu().numpy()
-
-# print("Label probs:", probs) 
 
 outputs_dir = Path(args.outputs_dir) / args.text.replace(' ', '_')
 outputs_dir.mkdir(parents = True, exist_ok = True)

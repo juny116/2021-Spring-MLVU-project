@@ -1,4 +1,0 @@
-lightning:
-  trainer:
-    distributed_backend: ddp
-    gpus: 0,1
