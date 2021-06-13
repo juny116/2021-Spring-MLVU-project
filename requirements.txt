@@ -9,3 +9,4 @@ ftfy
 wandb
 clip-by-openai 
 dall_e
+torch-fidelity
